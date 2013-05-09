@@ -63,14 +63,13 @@ xfce4_session_SOURCES =							\
 	xfsm-upower.c							\
 	xfsm-upower.h
 
+xfce4_session_SOURCES +=						\
+	xfsm-consolekit.c						\
+	xfsm-consolekit.h
 if HAVE_SYSTEMD
 xfce4_session_SOURCES +=						\
 	xfsm-systemd.c							\
 	xfsm-systemd.h
-else
-xfce4_session_SOURCES +=						\
-	xfsm-consolekit.c						\
-	xfsm-consolekit.h
 endif
 
 xfce4_session_CFLAGS =							\

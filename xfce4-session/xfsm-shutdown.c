@@ -68,10 +68,11 @@
 #include <xfce4-session/xfsm-legacy.h>
 #include <xfce4-session/xfsm-upower.h>
 
-#ifdef HAVE_SYSTEMD
-#include <xfce4-session/xfsm-systemd.h>
-#else
 #include <xfce4-session/xfsm-consolekit.h>
+
+#ifdef HAVE_SYSTEMD
+#define LOGIND_RUNNING() (access("/run/systemd/seats/", F_OK) >= 0)
+#include <xfce4-session/xfsm-systemd.h>
 #endif
 
 static void xfsm_shutdown_finalize  (GObject      *object);
@@ -96,11 +97,8 @@ struct _XfsmShutdown
 {
   GObject __parent__;
 
-#ifdef HAVE_SYSTEMD
   XfsmSystemd    *systemd;
-#else
   XfsmConsolekit *consolekit;
-#endif
   XfsmUPower     *upower;
 
   /* kiosk settings */
@@ -138,11 +136,20 @@ xfsm_shutdown_init (XfsmShutdown *shutdown)
 {
   XfceKiosk *kiosk;
 
+  shutdown->systemd = NULL;
+  shutdown->consolekit = NULL;
+
 #ifdef HAVE_SYSTEMD
-  shutdown->systemd = xfsm_systemd_get ();
-#else
-  shutdown->consolekit = xfsm_consolekit_get ();
+  if (LOGIND_RUNNING())
+    {
+      shutdown->systemd = xfsm_systemd_get ();
+      goto out; /* skip ConsoleKit initialization */
+    }
+  /* fallback to ConsoleKit, logind is not running */
 #endif
+  shutdown->consolekit = xfsm_consolekit_get ();
+
+ out:
   shutdown->upower = xfsm_upower_get ();
   shutdown->helper_state = SUDO_NOT_INITIAZED;
   shutdown->helper_require_password = FALSE;
@@ -161,11 +168,8 @@ xfsm_shutdown_finalize (GObject *object)
 {
   XfsmShutdown *shutdown = XFSM_SHUTDOWN (object);
 
-#ifdef HAVE_SYSTEMD
   g_object_unref (G_OBJECT (shutdown->systemd));
-#else
   g_object_unref (G_OBJECT (shutdown->consolekit));
-#endif
   g_object_unref (G_OBJECT (shutdown->upower));
 
   /* close down helper */
@@ -655,12 +659,13 @@ xfsm_shutdown_try_restart (XfsmShutdown  *shutdown,
 
   if (shutdown->helper_state == SUDO_AVAILABLE)
     return xfsm_shutdown_sudo_try_action (shutdown, XFSM_SHUTDOWN_RESTART, error);
-  else
+
 #ifdef HAVE_SYSTEMD
-    return xfsm_systemd_try_restart (shutdown->systemd, error);
-#else
-    return xfsm_consolekit_try_restart (shutdown->consolekit, error);
+  if (LOGIND_RUNNING())
+      return xfsm_systemd_try_restart (shutdown->systemd, error);
+  /* fallback to ConsoleKit, logind is not running */
 #endif
+  return xfsm_consolekit_try_restart (shutdown->consolekit, error);
 }
 
 
@@ -676,12 +681,13 @@ xfsm_shutdown_try_shutdown (XfsmShutdown  *shutdown,
 
   if (shutdown->helper_state == SUDO_AVAILABLE)
     return xfsm_shutdown_sudo_try_action (shutdown, XFSM_SHUTDOWN_SHUTDOWN, error);
-  else
+
 #ifdef HAVE_SYSTEMD
+  if (LOGIND_RUNNING())
     return xfsm_systemd_try_shutdown (shutdown->systemd, error);
-#else
-    return xfsm_consolekit_try_shutdown (shutdown->consolekit, error);
+  /* fallback to ConsoleKit, logind is not running */
 #endif
+  return xfsm_consolekit_try_shutdown (shutdown->consolekit, error);
 }
 
 
@@ -722,12 +728,18 @@ xfsm_shutdown_can_restart (XfsmShutdown  *shutdown,
     }
 
 #ifdef HAVE_SYSTEMD
-  if (xfsm_systemd_can_restart (shutdown->systemd, can_restart, error))
-#else
-  if (xfsm_consolekit_can_restart (shutdown->consolekit, can_restart, error))
+  if (LOGIND_RUNNING())
+    {
+      if (xfsm_systemd_can_restart (shutdown->systemd, can_restart, error))
+        return TRUE;
+      goto out; /* skip ConsoleKit polling, logind is running */
+    }
+  /* fallback to ConsoleKit, logind is not running */
 #endif
+  if (xfsm_consolekit_can_restart (shutdown->consolekit, can_restart, error))
     return TRUE;
 
+ out:
   if (xfsm_shutdown_sudo_init (shutdown, error))
     {
       *can_restart = TRUE;
@@ -753,12 +765,19 @@ xfsm_shutdown_can_shutdown (XfsmShutdown  *shutdown,
     }
 
 #ifdef HAVE_SYSTEMD
-  if (xfsm_systemd_can_shutdown (shutdown->systemd, can_shutdown, error))
-#else
-  if (xfsm_consolekit_can_shutdown (shutdown->consolekit, can_shutdown, error))
+  if (LOGIND_RUNNING())
+    {
+      if (xfsm_systemd_can_shutdown (shutdown->systemd, can_shutdown, error))
+        return TRUE;
+      goto out; /* skip ConsoleKit polling, logind is running */
+    }
+    /* fallback to ConsoleKit, logind is not running */
 #endif
+
+  if (xfsm_consolekit_can_shutdown (shutdown->consolekit, can_shutdown, error))
     return TRUE;
 
+ out:
   if (xfsm_shutdown_sudo_init (shutdown, error))
     {
       *can_shutdown = TRUE;
