@@ -413,6 +413,7 @@ xfsm_shutdown_sudo_try_action (XfsmShutdown      *shutdown,
     action = "SUSPEND";
   else if (type == XFSM_SHUTDOWN_HIBERNATE)
     action = "HIBERNATE";
+  else
     return FALSE;
 
   /* write action to sudo helper */
