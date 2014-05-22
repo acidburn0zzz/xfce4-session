@@ -403,15 +403,16 @@ xfsm_shutdown_sudo_try_action (XfsmShutdown      *shutdown,
   g_return_val_if_fail (shutdown->helper_state == SUDO_AVAILABLE, FALSE);
   g_return_val_if_fail (shutdown->helper_outfile != NULL, FALSE);
   g_return_val_if_fail (shutdown->helper_infile != NULL, FALSE);
-  g_return_val_if_fail (type == XFSM_SHUTDOWN_SHUTDOWN
-                        || type == XFSM_SHUTDOWN_RESTART, FALSE);
 
   /* the command we send to sudo */
   if (type == XFSM_SHUTDOWN_SHUTDOWN)
     action = "POWEROFF";
   else if (type == XFSM_SHUTDOWN_RESTART)
     action = "REBOOT";
-  else
+  else if (type == XFSM_SHUTDOWN_SUSPEND)
+    action = "SUSPEND";
+  else if (type == XFSM_SHUTDOWN_HIBERNATE)
+    action = "HIBERNATE";
     return FALSE;
 
   /* write action to sudo helper */
@@ -692,7 +693,10 @@ xfsm_shutdown_try_suspend (XfsmShutdown  *shutdown,
 {
   g_return_val_if_fail (XFSM_IS_SHUTDOWN (shutdown), FALSE);
 
-  return xfsm_upower_try_suspend (shutdown->upower, error);
+  if (shutdown->helper_state == SUDO_AVAILABLE)
+    return xfsm_shutdown_sudo_try_action (shutdown, XFSM_SHUTDOWN_SUSPEND, error);
+  else
+    return xfsm_upower_try_suspend (shutdown->upower, error);
 }
 
 
@@ -703,7 +707,10 @@ xfsm_shutdown_try_hibernate (XfsmShutdown  *shutdown,
 {
   g_return_val_if_fail (XFSM_IS_SHUTDOWN (shutdown), FALSE);
 
-  return xfsm_upower_try_hibernate (shutdown->upower, error);
+  if (shutdown->helper_state == SUDO_AVAILABLE)
+    return xfsm_shutdown_sudo_try_action (shutdown, XFSM_SHUTDOWN_HIBERNATE, error);
+  else
+    return xfsm_upower_try_hibernate (shutdown->upower, error);
 }
 
 
