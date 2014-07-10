@@ -57,6 +57,12 @@
 #ifdef REBOOT_CMD
 #undef REBOOT_CMD
 #endif
+#ifdef UP_BACKEND_SUSPEND_COMMAND
+#undef UP_BACKEND_SUSPEND_COMMAND
+#endif
+#ifdef UP_BACKEND_HIBERNATE_COMMAND
+#undef UP_BACKEND_HIBERNATE_COMMAND
+#endif
 
 #if defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
 #define POWEROFF_CMD  "/sbin/shutdown -p now"
@@ -67,6 +73,18 @@
 #else
 #define POWEROFF_CMD  "/sbin/shutdown -h now"
 #define REBOOT_CMD    "/sbin/shutdown -r now"
+#endif
+#ifdef BACKEND_TYPE_FREEBSD
+#define UP_BACKEND_SUSPEND_COMMAND "/usr/sbin/acpiconf -s 3"
+#define UP_BACKEND_HIBERNATE_COMMAND "/usr/sbin/acpiconf -s 4"
+#endif
+#if BACKEND_TYPE_LINUX
+#define UP_BACKEND_SUSPEND_COMMAND "/usr/sbin/pm-suspend"
+#define UP_BACKEND_HIBERNATE_COMMAND "/usr/sbin/pm-hibernate"
+#endif
+#ifdef BACKEND_TYPE_OPENBSD
+#define UP_BACKEND_SUSPEND_COMMAND	"/usr/sbin/zzz"
+#define UP_BACKEND_HIBERNATE_COMMAND "/usr/sbin/ZZZ"
 #endif
 
 
@@ -142,6 +160,14 @@ main (int argc, char **argv)
   else if (strncasecmp (action, "REBOOT", 6) == 0)
     {
       succeed = run (REBOOT_CMD);
+    }
+  else if (strncasecmp (action, "SUSPEND", 7) == 0)
+    {
+      succeed = run (UP_BACKEND_SUSPEND_COMMAND);
+    }
+  else if (strncasecmp (action, "HIBERNATE", 9) == 0)
+    {
+      succeed = run (UP_BACKEND_HIBERNATE_COMMAND);
     }
 
   if (succeed)

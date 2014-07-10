@@ -96,6 +96,10 @@ XDT_CHECK_PACKAGE([DBUS], [dbus-1], [1.1.0])
 XDT_CHECK_PACKAGE([DBUS_GLIB], [dbus-glib-1], [0.84])
 XDT_CHECK_PACKAGE([XFCONF], [libxfconf-0], [4.9.0])
 
+dnl Check for Upower
+XDT_CHECK_OPTIONAL_PACKAGE([UPOWER],[upower-glib], [0.9.7],
+			   [upower],[Upower support])
+
 dnl Check for polkit / systemd integration
 XDT_CHECK_OPTIONAL_PACKAGE([SYSTEMD], [polkit-gobject-1], [0.100],
                            [systemd], [Systemd support (through polit)])
@@ -157,6 +161,31 @@ if test "x$linux_ioprio_works" = "xyes"; then
             [Defined if linux/ioprio.h not only exists, but works properly])
 fi
 
+dnl Compile time default choice of backend
+AC_ARG_WITH([backend],
+	    AS_HELP_STRING([--with-backend=<option>],
+			   [Default backend to use linux, freebsd, openbsd]))
+# default to a sane option
+AC_CANONICAL_HOST
+if test x$with_backend = x; then
+	AS_CASE([$host],
+		[*-linux*],   [with_backend=linux],
+		[*-*freebsd*], [with_backend=freebsd],
+		[*-openbsd*], [with_backend=openbsd])
+fi
+AC_DEFINE_UNQUOTED(BACKEND, "$with_backend", [backend])
+AC_SUBST(BACKEND, "$with_backend")
+
+if test x$with_backend = xlinux; then
+    AC_DEFINE(BACKEND_TYPE_LINUX, 1, [Linux suspend/hibernate backend])
+fi
+if test x$with_backend = xfreebsd; then
+    AC_DEFINE(BACKEND_TYPE_FREEBSD, 1, [FreeBSD suspend/hibernate backend])
+fi
+if test x$with_backend = xopenbsd; then
+    AC_DEFINE(BACKEND_TYPE_OPENBSD, 1, [OpenBSD suspend/hibernate backend])
+fi
+
 dnl check for location Xfce glade files were installed to
 XFCE_GLADE_CATALOG_PATH="`pkg-config --variable glade_catalogdir libxfce4ui-1`"
 XFCE_GLADE_PIXMAP_PATH="`pkg-config --variable glade_pixmapdir libxfce4ui-1`"
@@ -207,5 +236,6 @@ echo " * Gnome Keyring support:          yes"
 else
 echo " * Gnome Keyring support:          no"
 fi
+echo " * Backend:                        ${with_backend}"
 
 echo

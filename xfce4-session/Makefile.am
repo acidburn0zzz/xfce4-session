@@ -82,7 +82,8 @@ xfce4_session_CFLAGS =							\
 	$(SYSTEMD_CFLAGS)						\
 	$(XFCONF_CFLAGS)						\
 	$(GMODULE_CFLAGS)						\
-	$(PLATFORM_CFLAGS)
+	$(PLATFORM_CFLAGS)						\
+	$(UPOWER_CFLAGS)
 
 xfce4_session_LDFLAGS =							\
 	-no-undefined							\
@@ -101,6 +102,7 @@ xfce4_session_LDADD =							\
 	$(LIBWNCK_LIBS)							\
 	$(SYSTEMD_LIBS)							\
 	$(XFCONF_LIBS)							\
+	$(UPOWER_LIBS)							\
 	-lm
 
 xfce4_session_DEPENDENCIES =						\
