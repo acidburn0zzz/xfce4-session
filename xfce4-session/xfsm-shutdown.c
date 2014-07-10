@@ -57,6 +57,9 @@
 #include <dbus/dbus-glib-lowlevel.h>
 #include <libxfce4util/libxfce4util.h>
 #include <gtk/gtk.h>
+#ifdef HAVE_UPOWER
+#include <upower.h>
+#endif
 
 #include <libxfsm/xfsm-util.h>
 
@@ -76,6 +79,8 @@
 
 static void xfsm_shutdown_finalize  (GObject      *object);
 static void xfsm_shutdown_sudo_free (XfsmShutdown *shutdown);
+static gboolean xfsm_shutdown_fallback_can_hibernate (void);
+static gboolean xfsm_shutdown_fallback_can_suspend   (void);
 
 
 
@@ -403,14 +408,16 @@ xfsm_shutdown_sudo_try_action (XfsmShutdown      *shutdown,
   g_return_val_if_fail (shutdown->helper_state == SUDO_AVAILABLE, FALSE);
   g_return_val_if_fail (shutdown->helper_outfile != NULL, FALSE);
   g_return_val_if_fail (shutdown->helper_infile != NULL, FALSE);
-  g_return_val_if_fail (type == XFSM_SHUTDOWN_SHUTDOWN
-                        || type == XFSM_SHUTDOWN_RESTART, FALSE);
 
   /* the command we send to sudo */
   if (type == XFSM_SHUTDOWN_SHUTDOWN)
     action = "POWEROFF";
   else if (type == XFSM_SHUTDOWN_RESTART)
     action = "REBOOT";
+  else if (type == XFSM_SHUTDOWN_SUSPEND)
+    action = "SUSPEND";
+  else if (type == XFSM_SHUTDOWN_HIBERNATE)
+    action = "HIBERNATE";
   else
     return FALSE;
 
@@ -692,7 +699,19 @@ xfsm_shutdown_try_suspend (XfsmShutdown  *shutdown,
 {
   g_return_val_if_fail (XFSM_IS_SHUTDOWN (shutdown), FALSE);
 
+#ifdef HAVE_UPOWER
+#if !UP_CHECK_VERSION(0, 99, 0)
   return xfsm_upower_try_suspend (shutdown->upower, error);
+#endif /* UP_CHECK_VERSION */
+#endif /* HAVE_UPOWER */
+
+  if (shutdown->helper_state == SUDO_AVAILABLE)
+    {
+      xfsm_upower_lock_screen (shutdown->upower, "Suspend", error);
+      return xfsm_shutdown_sudo_try_action (shutdown, XFSM_SHUTDOWN_SUSPEND, error);
+    }
+  else
+    return FALSE;
 }
 
 
@@ -703,7 +722,19 @@ xfsm_shutdown_try_hibernate (XfsmShutdown  *shutdown,
 {
   g_return_val_if_fail (XFSM_IS_SHUTDOWN (shutdown), FALSE);
 
+#ifdef HAVE_UPOWER
+#if !UP_CHECK_VERSION(0, 99, 0)
   return xfsm_upower_try_hibernate (shutdown->upower, error);
+#endif /* UP_CHECK_VERSION */
+#endif /* HAVE_UPOWER */
+
+  if (shutdown->helper_state == SUDO_AVAILABLE)
+    {
+      xfsm_upower_lock_screen (shutdown->upower, "Hibernate", error);
+      return xfsm_shutdown_sudo_try_action (shutdown, XFSM_SHUTDOWN_HIBERNATE, error);
+    }
+  else
+    return FALSE;
 }
 
 
@@ -784,8 +815,15 @@ xfsm_shutdown_can_suspend (XfsmShutdown  *shutdown,
       return TRUE;
     }
 
+#ifdef HAVE_UPOWER
+#if !UP_CHECK_VERSION(0, 99, 0)
   return xfsm_upower_can_suspend (shutdown->upower, can_suspend, 
                                   auth_suspend, error);
+#endif /* UP_CHECK_VERSION */
+#endif /* HAVE_UPOWER */
+
+  *can_suspend = xfsm_shutdown_fallback_can_suspend ();
+  return TRUE;
 }
 
 
@@ -804,8 +842,15 @@ xfsm_shutdown_can_hibernate (XfsmShutdown  *shutdown,
       return TRUE;
     }
 
+#ifdef HAVE_UPOWER
+#if !UP_CHECK_VERSION(0, 99, 0)
   return xfsm_upower_can_hibernate (shutdown->upower, can_hibernate,
                                     auth_hibernate, error);
+#endif /* UP_CHECK_VERSION */
+#endif /* HAVE_UPOWER */
+
+  *can_hibernate = xfsm_shutdown_fallback_can_hibernate ();
+  return TRUE;
 }
 
 
@@ -815,4 +860,122 @@ xfsm_shutdown_can_save_session (XfsmShutdown *shutdown)
 {
   g_return_val_if_fail (XFSM_IS_SHUTDOWN (shutdown), FALSE);
   return shutdown->kiosk_can_save_session;
+}
+
+
+
+#ifdef BACKEND_TYPE_FREEBSD
+static gchar *
+get_string_sysctl (GError **err, const gchar *format, ...)
+{
+        va_list args;
+        gchar *name;
+        size_t value_len;
+        gchar *str = NULL;
+
+        g_return_val_if_fail(format != NULL, FALSE);
+
+        va_start (args, format);
+        name = g_strdup_vprintf (format, args);
+        va_end (args);
+
+        if (sysctlbyname (name, NULL, &value_len, NULL, 0) == 0) {
+                str = g_new (char, value_len + 1);
+                if (sysctlbyname (name, str, &value_len, NULL, 0) == 0)
+                        str[value_len] = 0;
+                else {
+                        g_free (str);
+                        str = NULL;
+                }
+        }
+
+        if (!str)
+                g_set_error (err, 0, 0, "%s", g_strerror(errno));
+
+        g_free(name);
+        return str;
+}
+
+
+
+static gboolean
+freebsd_supports_sleep_state (const gchar *state)
+{
+  gboolean ret = FALSE;
+  gchar *sleep_states;
+
+  sleep_states = get_string_sysctl (NULL, "hw.acpi.supported_sleep_state");
+  if (sleep_states != NULL)
+    {
+      if (strstr (sleep_states, state) != NULL)
+          ret = TRUE;
+    }
+
+  g_free (sleep_states);
+
+  return ret;
+}
+#endif /* BACKEND_TYPE_FREEBSD */
+
+
+
+#ifdef BACKEND_TYPE_LINUX
+static gboolean
+linux_supports_sleep_state (const gchar *state)
+{
+  gboolean ret = FALSE;
+  gchar *command;
+  GError *error = NULL;
+  gint exit_status;
+
+  /* run script from pm-utils */
+  command = g_strdup_printf ("/usr/bin/pm-is-supported --%s", state);
+
+  ret = g_spawn_command_line_sync (command, NULL, NULL, &exit_status, &error);
+  if (!ret)
+    {
+      g_warning ("failed to run script: %s", error->message);
+      g_error_free (error);
+      goto out;
+    }
+  ret = (WIFEXITED(exit_status) && (WEXITSTATUS(exit_status) == EXIT_SUCCESS));
+
+out:
+  g_free (command);
+
+  return ret;
+}
+#endif /* BACKEND_TYPE_LINUX */
+
+
+static gboolean
+xfsm_shutdown_fallback_can_suspend (void)
+{
+#ifdef BACKEND_TYPE_FREEBSD
+  return freebsd_supports_sleep_state ("S3");
+#endif
+#ifdef BACKEND_TYPE_LINUX
+  return linux_supports_sleep_state ("suspend");
+#endif
+#ifdef BACKEND_TYPE_OPENBSD
+  return TRUE;
+#endif
+
+  return FALSE;
+}
+
+static gboolean
+xfsm_shutdown_fallback_can_hibernate (void)
+{
+#ifdef BACKEND_TYPE_FREEBSD
+  return freebsd_supports_sleep_state ("S4");
+#endif
+#ifdef BACKEND_TYPE_LINUX
+  return linux_supports_sleep_state ("hibernate");
+#endif
+#ifdef BACKEND_TYPE_OPENBSD
+  return TRUE;
+#endif
+
+  return FALSE;
 }
