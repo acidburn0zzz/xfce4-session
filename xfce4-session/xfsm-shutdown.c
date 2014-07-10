@@ -51,7 +51,9 @@
 #ifdef HAVE_SIGNAL_H
 #include <signal.h>
 #endif
-
+#ifdef HAVE_SYS_SYSCTL_H
+#include <sys/sysctl.h>
+#endif
 
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus-glib-lowlevel.h>
