@@ -73,7 +73,6 @@ xfae_dialog_init (XfaeDialog *dialog)
                           GTK_STOCK_OK, GTK_RESPONSE_OK,
                           NULL);
   gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_OK);
-  gtk_dialog_set_has_separator (GTK_DIALOG (dialog), FALSE);
   gtk_dialog_set_response_sensitive (GTK_DIALOG (dialog), GTK_RESPONSE_OK, FALSE);
   gtk_window_set_title (GTK_WINDOW (dialog), _("Add application"));
 
@@ -85,7 +84,7 @@ xfae_dialog_init (XfaeDialog *dialog)
                         "n-columns", 2,
                         "homogeneous", FALSE,
                         NULL);
-  gtk_box_pack_start (GTK_BOX (GTK_DIALOG (dialog)->vbox), table, TRUE, TRUE, 0);
+  gtk_box_pack_start (GTK_BOX (gtk_dialog_get_content_area(GTK_DIALOG (dialog))), table, TRUE, TRUE, 0);
   gtk_widget_show (table);
 
   label = g_object_new (GTK_TYPE_LABEL,

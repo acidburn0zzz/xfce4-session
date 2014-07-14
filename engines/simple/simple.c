@@ -53,7 +53,7 @@ struct _Simple
   gboolean     dialog_active;
   GdkWindow   *window;
   GdkPixmap   *pixmap;
-  GdkGC       *gc;
+  cairo_t     *cr;
   PangoLayout *layout;
   GdkRectangle area;
   GdkRectangle textbox;
@@ -91,6 +91,7 @@ static void
 simple_setup (XfsmSplashEngine *engine,
               XfsmSplashRc     *rc)
 {
+  cairo_t              *cr;
   PangoFontDescription *description;
   PangoFontMetrics     *metrics;
   PangoContext         *context;
@@ -176,24 +177,15 @@ simple_setup (XfsmSplashEngine *engine,
 
   gdk_window_set_back_pixmap (simple->window, simple->pixmap, FALSE);
 
-  simple->gc = gdk_gc_new (simple->pixmap);
-  gdk_gc_set_function (simple->gc, GDK_COPY);
-  gdk_gc_set_rgb_fg_color (simple->gc, &simple->bgcolor);
+  cr = gdk_cairo_create(GDK_DRAWABLE(simple->window));
+  gdk_cairo_set_source_color (cr, &simple->bgcolor);
 
-  gdk_draw_rectangle (simple->pixmap,
-                      simple->gc, TRUE,
-                      0, 0,
-                      simple->area.width,
-                      simple->area.height);
+  cairo_rectangle (cr, 0, 0, simple->area.width, simple->area.height);
+  cairo_stroke (cr);
 
-  gdk_draw_pixbuf (simple->pixmap,
-                   simple->gc,
-                   logo,
-                   0, 0,
-                   BORDER, BORDER,
-                   logo_width,
-                   logo_height,
-                   GDK_RGB_DITHER_NONE, 0, 0);
+  gdk_cairo_set_source_pixmap (cr, simple->pixmap, 0, 0);
+  cairo_rectangle (cr, BORDER, BORDER, logo_width, logo_height);
+  cairo_fill (cr);
 
   gdk_window_add_filter (simple->window, simple_filter, simple);
   gdk_window_show (simple->window);
@@ -221,15 +213,9 @@ simple_next (XfsmSplashEngine *engine, const gchar *text)
   tx = simple->textbox.x + (simple->textbox.width - tw) / 2;
   ty = simple->textbox.y + (simple->textbox.height - th) / 2;
 
-  gdk_gc_set_rgb_fg_color (simple->gc, &simple->bgcolor);
-  gdk_draw_rectangle (simple->pixmap,
-                      simple->gc, TRUE,
-                      simple->textbox.x,
-                      simple->textbox.y,
-                      simple->textbox.width,
-                      simple->textbox.height);
-
-  gdk_gc_set_clip_rectangle (simple->gc, &simple->textbox);
+  gdk_cairo_set_source_color (simple->cr, &simple->bgcolor);
+  gdk_cairo_rectangle (simple->cr, &simple->textbox);
+  cairo_stroke (simple->cr);
 
   /* draw shadow */
   shcolor.red = (simple->fgcolor.red + simple->bgcolor.red) / 2;
@@ -239,15 +225,14 @@ simple_next (XfsmSplashEngine *engine, const gchar *text)
   shcolor.green = shcolor.red;
   shcolor.blue = shcolor.red;
 
-  gdk_gc_set_rgb_fg_color (simple->gc, &shcolor);
-  gdk_draw_layout (simple->pixmap, simple->gc,
-                   tx + 2, ty + 2, simple->layout);
+  gdk_cairo_set_source_color (simple->cr, &shcolor);
+  cairo_move_to (simple->cr, tx + 2, ty + 2);
+  pango_cairo_show_layout (simple->cr, simple->layout);
 
-  gdk_gc_set_rgb_fg_color (simple->gc, &simple->fgcolor);
-  gdk_draw_layout (simple->pixmap,
-                   simple->gc,
-                   tx, ty,
-                   simple->layout);
+  /* draw text */
+  gdk_cairo_set_source_color (simple->cr, &simple->fgcolor);
+  cairo_move_to (simple->cr, tx, ty);
+  pango_cairo_show_layout (simple->cr, simple->layout);
 
   gdk_window_clear_area (simple->window,
                          simple->textbox.x,
@@ -290,7 +275,6 @@ simple_destroy (XfsmSplashEngine *engine)
   gdk_window_destroy (simple->window);
   g_object_unref (simple->layout);
   g_object_unref (simple->pixmap);
-  g_object_unref (simple->gc);
   g_free (engine->user_data);
 }
 
@@ -352,7 +336,7 @@ config_configure (XfsmSplashConfig *config,
                                         GTK_RESPONSE_CLOSE,
                                         NULL);
 
-  dbox = GTK_BOX (GTK_DIALOG (dialog)->vbox);
+  dbox = GTK_BOX (gtk_dialog_get_content_area(GTK_DIALOG (dialog)));
 
   frame = xfce_gtk_frame_box_new (_("Font"), &bin);
   gtk_box_pack_start (dbox, frame, FALSE, FALSE, 6);

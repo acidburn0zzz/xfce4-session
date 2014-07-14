@@ -256,7 +256,7 @@ xfae_window_button_press_event (GtkWidget      *treeview,
           g_main_loop_unref (loop);
           gtk_grab_remove (menu);
 
-          gtk_object_sink (GTK_OBJECT (menu));
+          g_object_ref_sink (menu);
 
           return TRUE;
         }

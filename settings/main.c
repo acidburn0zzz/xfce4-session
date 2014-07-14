@@ -27,6 +27,7 @@
 #include <xfconf/xfconf.h>
 
 #include <gtk/gtk.h>
+#include <gdk/gdkx.h>
 
 #include <libxfce4util/libxfce4util.h>
 #include <libxfce4ui/libxfce4ui.h>
@@ -163,7 +164,7 @@ main(int argc,
         gtk_widget_show(dialog);
 
         /* To prevent the settings dialog to be saved in the session */
-        gdk_set_sm_client_id ("FAKE ID");
+        gdk_x11_set_sm_client_id ("FAKE ID");
 
         gtk_main();
     } else {
