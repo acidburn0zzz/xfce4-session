@@ -200,7 +200,7 @@ balou_theme_get_logo (const BalouTheme *theme,
 void
 balou_theme_draw_gradient (const BalouTheme *theme,
                            GdkDrawable      *drawable,
-                           GdkGC            *gc,
+                           cairo_t          *cr,
                            GdkRectangle      logobox,
                            GdkRectangle      textbox)
 {
@@ -210,13 +210,15 @@ balou_theme_draw_gradient (const BalouTheme *theme,
   gint     dblue;
   gint     i;
 
+  g_return_if_fail(cr != NULL);
+
   if (gdk_color_equal (&theme->bgcolor1, &theme->bgcolor2))
     {
-      gdk_gc_set_rgb_fg_color (gc, &theme->bgcolor1);
-      gdk_draw_rectangle (drawable, gc, TRUE, logobox.x, logobox.y,
-                          logobox.width, logobox.height);
-      gdk_draw_rectangle (drawable, gc, TRUE, textbox.x, textbox.y,
-                          textbox.width, textbox.height);
+      gdk_cairo_set_source_color (cr, &theme->bgcolor1);
+      gdk_cairo_rectangle (cr, &logobox);
+      cairo_fill(cr);
+      gdk_cairo_rectangle (cr, &textbox);
+      cairo_fill(cr);
     }
   else
     {
@@ -231,16 +233,17 @@ balou_theme_draw_gradient (const BalouTheme *theme,
           color.green = theme->bgcolor2.green + (i * dgreen / logobox.height);
           color.blue = theme->bgcolor2.blue + (i * dblue / logobox.height);
 
-          gdk_gc_set_rgb_fg_color (gc, &color);
-          gdk_draw_line (drawable, gc, logobox.x, logobox.y + i,
-                         logobox.x + logobox.width, logobox.y + i);
+          gdk_cairo_set_source_color (cr, &color);
+          cairo_move_to(cr, logobox.x, logobox.y + i);
+          cairo_line_to(cr, logobox.x + logobox.width, logobox.y + i);
+          cairo_stroke(cr);
         }
 
     if (textbox.width != 0 && textbox.height != 0)
       {
-        gdk_gc_set_rgb_fg_color (gc, &theme->bgcolor1);
-        gdk_draw_rectangle (drawable, gc, TRUE, textbox.x, textbox.y,
-                            textbox.width, textbox.height);
+        gdk_cairo_set_source_color (cr, &theme->bgcolor1);
+        gdk_cairo_rectangle (cr, &textbox);
+        cairo_fill(cr);
       }
     }
 }
@@ -260,7 +263,7 @@ balou_theme_generate_preview (const BalouTheme *theme,
   GdkPixbuf *pixbuf;
   GdkPixbuf *scaled;
   GdkWindow *root;
-  GdkGC     *gc;
+  cairo_t   *cr;
   gint       pw, ph;
 
   /* check for a cached preview first */
@@ -287,8 +290,7 @@ balou_theme_generate_preview (const BalouTheme *theme,
 
   root = gdk_screen_get_root_window (gdk_screen_get_default ());
   pixmap = gdk_pixmap_new (GDK_DRAWABLE (root), WIDTH, HEIGHT, -1);
-  gc = gdk_gc_new (pixmap);
-  gdk_gc_set_function (gc, GDK_COPY);
+  cr = gdk_cairo_create(GDK_DRAWABLE(root));
 
   logobox.x = 0;
   logobox.y = 0;
@@ -297,17 +299,12 @@ balou_theme_generate_preview (const BalouTheme *theme,
   textbox.x = 0;
   textbox.y = 0;
   balou_theme_draw_gradient (theme, GDK_DRAWABLE (pixmap),
-                             gc, logobox, textbox);
+                             cr, logobox, textbox);
 
   pixbuf = balou_theme_get_logo (theme, WIDTH, HEIGHT);
   if (pixbuf != NULL)
     {
-      pw = gdk_pixbuf_get_width (pixbuf);
-      ph = gdk_pixbuf_get_height (pixbuf);
-
-      gdk_draw_pixbuf (GDK_DRAWABLE (pixmap), gc, pixbuf, 0, 0,
-                       (WIDTH - pw) / 2, (HEIGHT - ph) / 2,
-                       pw, ph, GDK_RGB_DITHER_NONE, 0, 0);
+      gdk_cairo_set_source_pixbuf (cr, pixbuf, 0, 0);
 
       g_object_unref (G_OBJECT (pixbuf));
     }
@@ -318,7 +315,7 @@ balou_theme_generate_preview (const BalouTheme *theme,
 
   g_object_unref (pixbuf);
   g_object_unref (pixmap);
-  g_object_unref (gc);
+  cairo_destroy(cr);
 
   /* store preview */
   store_cached_preview (theme, scaled);

@@ -53,8 +53,7 @@ struct _BalouWindow
   GdkWindow   *window;
   GdkPixmap   *backbuf;
   PangoLayout *layout;
-  GdkGC       *gc_copy;
-  GdkGC       *gc_set;
+  cairo_t     *cr;
   GdkRectangle area;
   GdkRectangle logobox;
   GdkRectangle textbox;
@@ -78,15 +77,10 @@ balou_init (Balou        *balou,
   PangoContext         *context;
   PangoLayout          *layout;
   BalouWindow          *window;
-  GdkColormap          *cmap;
   GdkCursor            *cursor;
   GdkScreen            *screen;
   GdkWindow            *root;
   GdkPixbuf            *pb;
-  GdkGCValues           gc_values;
-  GdkGCValuesMask       gc_mask;
-  GdkGC                *gc_copy;
-  GdkGC                *gc_set;
   gint                  layout_height;
   gint                  nmonitors;
   gint                  nscreens;
@@ -124,11 +118,6 @@ balou_init (Balou        *balou,
       nmonitors = gdk_screen_get_n_monitors (screen);
       root = gdk_screen_get_root_window (screen);
 
-      /* allocate fore/background colors */
-      cmap = gdk_drawable_get_colormap (root);
-      gdk_rgb_find_color (cmap, &balou->bgcolor);
-      gdk_rgb_find_color (cmap, &balou->fgcolor);
-
       /* create pango layout for this screen */
       context = gdk_pango_context_get_for_screen (screen);
       pango_context_set_font_description (context, description);
@@ -139,23 +128,12 @@ balou_init (Balou        *balou,
                      + 3;
       pango_font_metrics_unref (metrics);
 
-      /* create graphics contexts for this screen */
-      gc_mask = GDK_GC_FUNCTION | GDK_GC_EXPOSURES;
-      gc_values.function = GDK_COPY;
-      gc_values.graphics_exposures = FALSE;
-      gc_copy = gdk_gc_new_with_values (root, &gc_values, gc_mask);
-      gc_mask |= GDK_GC_FOREGROUND | GDK_GC_BACKGROUND;
-      gc_values.foreground = balou->bgcolor;
-      gc_values.background = balou->fgcolor;
-      gc_set = gdk_gc_new_with_values (root, &gc_values, gc_mask);
 
       for (m = 0; m < nmonitors; ++m)
         {
           window = balou->windows + i;
           balou_window_init (window, screen, m, root, cursor);
 
-          window->gc_copy = GDK_GC (g_object_ref (gc_copy));
-          window->gc_set = GDK_GC (g_object_ref (gc_set));
           window->layout = PANGO_LAYOUT (g_object_ref (layout));
 
           /* calculate box dimensions */
@@ -169,11 +147,11 @@ balou_init (Balou        *balou,
 
           balou_theme_draw_gradient (balou->theme,
                                      window->backbuf,
-                                     gc_copy,
+                                     window->cr,
                                      window->logobox,
                                      window->textbox);
 
-          gdk_gc_set_rgb_fg_color (gc_copy, &balou->fgcolor);
+          gdk_cairo_set_source_color (window->cr, &balou->fgcolor);
 
           if (mainscreen == screen && mainmonitor == m)
             balou->mainwin = window;
@@ -183,8 +161,6 @@ balou_init (Balou        *balou,
 
       g_object_unref (context);
       g_object_unref (layout);
-      g_object_unref (gc_copy);
-      g_object_unref (gc_set);
     }
 
   /* show splash windows */
@@ -195,7 +171,7 @@ balou_init (Balou        *balou,
       gtk_widget_show_now (window->wmwindow);
       /*gdk_window_set_back_pixmap (window->wmwindow->window,
                                   window->backbuf, FALSE);*/
-      gdk_window_add_filter (window->wmwindow->window,
+      gdk_window_add_filter (gtk_widget_get_window(window->wmwindow),
                              balou_window_filter,
                              window);
 
@@ -218,8 +194,9 @@ balou_init (Balou        *balou,
       px = (window->logobox.width - pw) / 2;
       py = (window->logobox.height - ph) / 2;
 
-      gdk_draw_pixbuf (window->backbuf, window->gc_copy, pb, 0, 0,
-                       px, py, pw, ph, GDK_RGB_DITHER_NONE, 0, 0);
+      gdk_cairo_set_source_pixmap (window->cr, window->backbuf, 0, 0);
+      cairo_rectangle (window->cr, px, py, pw, ph);
+      cairo_fill (window->cr);
       gdk_window_clear_area (window->window, px, py, pw, ph);
       g_object_unref (pb);
     }
@@ -229,8 +206,9 @@ balou_init (Balou        *balou,
                                     window->textbox.width,
                                     window->textbox.height,
                                     -1);
-  gdk_draw_rectangle (balou->fader_pm, window->gc_set, TRUE, 0, 0,
-                      window->textbox.width, window->textbox.height);
+
+  gdk_cairo_rectangle (window->cr, &window->textbox);
+  cairo_stroke (window->cr);
 
   pango_font_description_free (description);
   gdk_cursor_unref (cursor);
@@ -255,16 +233,16 @@ balou_fadein (Balou *balou, const gchar *text)
   area.width  = tw + BALOU_INCREMENT;
   area.height = th;
 
-  gdk_draw_rectangle (balou->fader_pm, window->gc_set, TRUE, 0, 0,
-                      window->textbox.width, window->textbox.height);
-  gdk_draw_layout (balou->fader_pm, window->gc_copy,
-                   BALOU_INCREMENT, 0, window->layout);
+  gdk_cairo_rectangle (window->cr, &window->textbox);
+  cairo_stroke (window->cr);
+  pango_cairo_show_layout (window->cr, window->layout);
 
   median = (window->area.width - area.width) / 2;
   for (x = 0; (median - x) > BALOU_INCREMENT; x += BALOU_INCREMENT)
     {
-      gdk_draw_drawable (window->window, window->gc_copy, balou->fader_pm,
-                         0, 0, area.x + x, area.y, area.width, area.height);
+      gdk_cairo_set_source_pixmap (window->cr, balou->fader_pm, 0, 0);
+      gdk_cairo_rectangle (window->cr, &area);
+      cairo_fill (window->cr);
 
       gdk_flush ();
 
@@ -274,15 +252,12 @@ balou_fadein (Balou *balou, const gchar *text)
   area.x += median;
   balou->fader_area = area;
 
-  gdk_draw_rectangle (window->backbuf,
-                      window->gc_set, TRUE,
-                      window->textbox.x,
-                      window->textbox.y,
-                      window->textbox.width,
-                      window->textbox.height);
+  gdk_cairo_rectangle (window->cr, &window->textbox);
+  cairo_stroke (window->cr);
 
-  gdk_draw_drawable (window->backbuf, window->gc_copy, balou->fader_pm,
-                     0, 0, area.x, area.y, area.width, area.height);
+  gdk_cairo_set_source_pixmap (window->cr, balou->fader_pm, 0, 0);
+  gdk_cairo_rectangle (window->cr, &area);
+  cairo_fill (window->cr);
 
   gdk_window_clear_area (window->window,
                          window->textbox.x,
@@ -302,20 +277,17 @@ balou_fadeout (Balou *balou)
   left = (window->textbox.x + window->textbox.width) - BALOU_INCREMENT;
   for (; area.x < left; area.x += BALOU_INCREMENT)
     {
-      gdk_draw_drawable (window->window, window->gc_copy, balou->fader_pm,
-                         0, 0, area.x, area.y, area.width, area.height);
+      gdk_cairo_set_source_pixmap (window->cr, balou->fader_pm, 0, 0);
+      gdk_cairo_rectangle (window->cr, &area);
+      cairo_fill(window->cr);
 
       gdk_flush ();
 
       g_main_context_iteration (NULL, FALSE);
     }
 
-  gdk_draw_rectangle (window->backbuf,
-                      window->gc_set, TRUE,
-                      window->textbox.x,
-                      window->textbox.y,
-                      window->textbox.width,
-                      window->textbox.height);
+  gdk_cairo_rectangle (window->cr, &window->textbox);
+  cairo_stroke (window->cr);
 
   gdk_window_clear_area (window->window,
                          window->textbox.x,
@@ -405,6 +377,8 @@ balou_window_init (BalouWindow  *window,
                                     window->area.height,
                                     -1);
 
+  window->cr = gdk_cairo_create(GDK_DRAWABLE(window->window));
+
   gdk_window_set_back_pixmap (window->window, window->backbuf, FALSE);
 }
 
@@ -413,9 +387,9 @@ static void
 balou_window_destroy (BalouWindow *window)
 {
   gdk_window_remove_filter (window->window, balou_window_filter, window);
-  if (GTK_WIDGET_REALIZED (window->wmwindow))
+  if (gtk_widget_get_realized (window->wmwindow))
     {
-      gdk_window_remove_filter (window->wmwindow->window,
+      gdk_window_remove_filter (gtk_widget_get_window(window->wmwindow),
                                 balou_window_filter,
                                 window);
     }
@@ -424,8 +398,6 @@ balou_window_destroy (BalouWindow *window)
   gtk_widget_destroy (window->wmwindow);
   g_object_unref (window->backbuf);
   g_object_unref (window->layout);
-  g_object_unref (window->gc_copy);
-  g_object_unref (window->gc_set);
 }
 
 
