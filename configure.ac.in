@@ -101,7 +101,7 @@ XDT_CHECK_OPTIONAL_PACKAGE([UPOWER],[upower-glib], [0.9.7],
 			   [upower],[Upower support])
 
 dnl Check for polkit / systemd integration
-XDT_CHECK_OPTIONAL_PACKAGE([SYSTEMD], [polkit-gobject-1], [0.100],
+XDT_CHECK_OPTIONAL_PACKAGE([SYSTEMD], [polkit-gobject-1], [0.102],
                            [systemd], [Systemd support (through polit)])
 
 dnl Check for debugging support
