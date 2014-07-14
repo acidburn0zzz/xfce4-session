@@ -75,8 +75,8 @@
 
 #include <xfce4-session/xfsm-consolekit.h>
 
-#ifdef HAVE_SYSTEMD
 #define LOGIND_RUNNING() (access("/run/systemd/seats/", F_OK) >= 0)
+#ifdef HAVE_SYSTEMD
 #include <xfce4-session/xfsm-systemd.h>
 #endif
 
@@ -104,7 +104,9 @@ struct _XfsmShutdown
 {
   GObject __parent__;
 
+#ifdef HAVE_SYSTEMD
   XfsmSystemd    *systemd;
+#endif
   XfsmConsolekit *consolekit;
   XfsmUPower     *upower;
 
@@ -143,20 +145,24 @@ xfsm_shutdown_init (XfsmShutdown *shutdown)
 {
   XfceKiosk *kiosk;
 
+#ifdef HAVE_SYSTEMD
   shutdown->systemd = NULL;
+#endif
   shutdown->consolekit = NULL;
 
-#ifdef HAVE_SYSTEMD
+
   if (LOGIND_RUNNING())
     {
+#ifdef HAVE_SYSTEMD
       shutdown->systemd = xfsm_systemd_get ();
-      goto out; /* skip ConsoleKit initialization */
-    }
-  /* fallback to ConsoleKit, logind is not running */
 #endif
-  shutdown->consolekit = xfsm_consolekit_get ();
+    }
+  else
+    {
+      /* fallback to ConsoleKit, logind is not running */
+      shutdown->consolekit = xfsm_consolekit_get ();
+    }
 
- out:
   shutdown->upower = xfsm_upower_get ();
   shutdown->helper_state = SUDO_NOT_INITIAZED;
   shutdown->helper_require_password = FALSE;
@@ -175,7 +181,9 @@ xfsm_shutdown_finalize (GObject *object)
 {
   XfsmShutdown *shutdown = XFSM_SHUTDOWN (object);
 
+#ifdef HAVE_SYSTEMD
   g_object_unref (G_OBJECT (shutdown->systemd));
+#endif
   g_object_unref (G_OBJECT (shutdown->consolekit));
   g_object_unref (G_OBJECT (shutdown->upower));
 
@@ -764,15 +772,20 @@ xfsm_shutdown_can_restart (XfsmShutdown  *shutdown,
   if (LOGIND_RUNNING())
     {
       if (xfsm_systemd_can_restart (shutdown->systemd, can_restart, error))
-        return TRUE;
-      goto out; /* skip ConsoleKit polling, logind is running */
+        {
+          return TRUE;
+        }
+      else
+        {
+          /* skip ConsoleKit polling, logind is running */
+          return FALSE;
+        }
     }
   /* fallback to ConsoleKit, logind is not running */
 #endif
   if (xfsm_consolekit_can_restart (shutdown->consolekit, can_restart, error))
     return TRUE;
 
- out:
   if (xfsm_shutdown_sudo_init (shutdown, error))
     {
       *can_restart = TRUE;
@@ -801,8 +814,14 @@ xfsm_shutdown_can_shutdown (XfsmShutdown  *shutdown,
   if (LOGIND_RUNNING())
     {
       if (xfsm_systemd_can_shutdown (shutdown->systemd, can_shutdown, error))
-        return TRUE;
-      goto out; /* skip ConsoleKit polling, logind is running */
+        {
+          return TRUE;
+        }
+      else
+        {
+          /* skip ConsoleKit polling, logind is running */
+          return FALSE;
+        }
     }
     /* fallback to ConsoleKit, logind is not running */
 #endif
@@ -810,7 +829,6 @@ xfsm_shutdown_can_shutdown (XfsmShutdown  *shutdown,
   if (xfsm_consolekit_can_shutdown (shutdown->consolekit, can_shutdown, error))
     return TRUE;
 
- out:
   if (xfsm_shutdown_sudo_init (shutdown, error))
     {
       *can_shutdown = TRUE;
