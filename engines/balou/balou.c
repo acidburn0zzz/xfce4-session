@@ -235,7 +235,7 @@ balou_fadein (Balou *balou, const gchar *text)
 
   gdk_cairo_rectangle (window->cr, &window->textbox);
   cairo_stroke (window->cr);
-  cairo_move_to(cr, BALOU_INCREMENT, 0);
+  cairo_move_to(window->cr, BALOU_INCREMENT, 0);
   pango_cairo_show_layout (window->cr, window->layout);
 
   median = (window->area.width - area.width) / 2;
