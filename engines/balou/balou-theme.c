@@ -304,7 +304,12 @@ balou_theme_generate_preview (const BalouTheme *theme,
   pixbuf = balou_theme_get_logo (theme, WIDTH, HEIGHT);
   if (pixbuf != NULL)
     {
+      pw = gdk_pixbuf_get_width (pixbuf);
+      ph = gdk_pixbuf_get_height (pixbuf);
+
       gdk_cairo_set_source_pixbuf (cr, pixbuf, 0, 0);
+      cairo_rectangle (cr, (WIDTH - pw) / 2, (HEIGHT - ph) / 2, pw, ph);
+      cairo_fill (cr);
 
       g_object_unref (G_OBJECT (pixbuf));
     }
