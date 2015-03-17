@@ -27,7 +27,8 @@ export PATH
 # Lock by xscreensaver or gnome-screensaver, if a respective daemon is running
 for lock_cmd in \
     "xscreensaver-command -lock" \
-    "gnome-screensaver-command --lock"
+    "gnome-screensaver-command --lock" \
+    "light-locker-command --lock"
 do
     $lock_cmd >/dev/null 2>&1 && exit
 done
